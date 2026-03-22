@@ -1,0 +1,2 @@
+"""Household automation application."""
+

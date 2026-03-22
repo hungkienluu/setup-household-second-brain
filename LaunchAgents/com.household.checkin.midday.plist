@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.household.checkin.midday</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{VAULT_ROOT}}/scripts/household-runner</string>
+        <string>run-automation.sh</string>
+        <string>checkin</string>
+        <string>Midday</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>11</integer>
+        <key>Minute</key>
+        <integer>45</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>{{VAULT_ROOT}}/logs/com.household.checkin.midday.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{VAULT_ROOT}}/logs/com.household.checkin.midday.stderr.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:{{GEMINI_BIN_DIR}}</string>
+        <key>VAULT_ROOT</key>
+        <string>{{VAULT_ROOT}}</string>
+    </dict>
+</dict>
+</plist>

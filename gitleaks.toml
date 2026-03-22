@@ -1,0 +1,17 @@
+title = "Household Second Brain Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow known dummy placeholders in docs and tests"
+regexTarget = "match"
+regexes = [
+  '''internal_send_token="secret"''',
+  '''bb_password="password"''',
+  '''webhook_token="webhook-token"''',
+  '''send_api_token="send-token"''',
+  '''BB_PASSWORD="your-bluebubbles-password"''',
+  '''WEBHOOK_TOKEN="\$\(python3 -c 'import secrets; print\(secrets\.token_hex\(32\)\)'\)"''',
+  '''http://127\.0\.0\.1:5005/webhook\?token=YOUR_WEBHOOK_TOKEN''',
+]

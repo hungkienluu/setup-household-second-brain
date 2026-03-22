@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+Icon
+Icon?
+.tmp.driveupload/
+
+# Secrets and local env
+.household.env
+*.env
+
+# Generated household content
+Context/
+Projects/
+Briefs/
+inbox/
+logs/
+Welcome.md
+HOUSEHOLD_AI.log
+
+# Local tool state
+.obsidian/
+.superset/
+.codex/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

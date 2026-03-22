@@ -1,0 +1,27 @@
+#!/bin/zsh
+
+ENV_FILE="${HOME}/.household.env"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+fi
+
+export VAULT_ROOT="${VAULT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+export GEMINI="${GEMINI:-gemini}"
+export GWS="${GWS:-gws}"
+
+# Models
+export MODEL_PRO="gemini-2.5-pro"
+export MODEL_FLASH="gemini-2.5-flash"
+export MODEL_MESSAGE="gemini-2.5-flash"
+
+# Security policy flags
+export ENFORCE_SEND_AUTH="${ENFORCE_SEND_AUTH:-1}"
+export INTERNAL_SEND_TOKEN="${INTERNAL_SEND_TOKEN:-${SEND_API_TOKEN:-${WEBHOOK_TOKEN:-}}}"
+export GEMINI_APPROVAL_MODE_SAFE="${GEMINI_APPROVAL_MODE_SAFE:-yolo}"
+export GEMINI_APPROVAL_MODE_DEFAULT="${GEMINI_APPROVAL_MODE_DEFAULT:-yolo}"
+export ENABLE_DAILY_BRIEF_GMAIL_CONTEXT="${ENABLE_DAILY_BRIEF_GMAIL_CONTEXT:-0}"
+export ENABLE_SCHOOL_ASSISTANT_CALENDAR_EVENTS="${ENABLE_SCHOOL_ASSISTANT_CALENDAR_EVENTS:-1}"
+export DEFAULT_CALENDAR_TIMEZONE="${DEFAULT_CALENDAR_TIMEZONE:-UTC}"
+export SCHOOL_EVENT_DEFAULT_DURATION_MINUTES="${SCHOOL_EVENT_DEFAULT_DURATION_MINUTES:-60}"

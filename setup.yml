@@ -1,0 +1,656 @@
+version: "3.1.0"
+title: "Universal Setup: Household Second Brain"
+description: >
+  Scaffolds a shared household second brain powered by Gemini CLI, a Python
+  automation core, Google Workspace, BlueBubbles iMessage integration, and
+  macOS LaunchAgents. Portable across Codex, Claude Code, and Gemini CLI.
+
+instructions: |
+  You are initializing a shared household second brain.
+  Follow these steps exactly. Do not skip steps or combine them.
+
+  The vault path is: {{ vault_path }}
+
+  VOICE DICTATION REMINDER
+  ========================
+  Before you ask the user ANY question, say this once:
+
+  "Tip: for any of these questions, you can use a voice dictation app like
+  Wispr Flow (https://wispr.flow) to speak your answer instead of typing.
+  It's especially useful for free-form sections like routines, rules, and
+  current pain points. Just dictate into the chat."
+
+  Repeat this reminder inline before any section that asks for more than
+  a name or date — specifically: Household Charter, Family Rules, Routines
+  and Rhythms, Cast of Characters details, and Open Loops.
+
+  CORE DECISIONS
+  ==============
+  - Vault root lives in a shared Google Drive folder synced locally.
+  - Canonical identity is both:
+    1. A shared Google account (Google Workspace access via `gws`)
+    2. A dedicated Apple ID signed into a spare Mac for iMessage
+  - The spare Mac should use a dedicated macOS user account for the household runtime.
+    Do NOT run LaunchAgents, BlueBubbles, or the vault automation under a user's
+    normal personal account.
+  - iMessage integration is handled by BlueBubbles (self-hosted server on the spare Mac)
+    sending webhooks to a local Python listener (`scripts/webhook_listener.py` wrapper
+    launching `app/server.py`).
+  - The agent may send messages directly only to household adults listed in
+    Context/_AI_CONTEXT.md.
+  - For everyone else, the agent must draft only.
+  - The agent may create and edit calendar events autonomously.
+  - Tasks live in Google Tasks and are mirrored into Markdown.
+  - The first two workflows are pickups and meal plans.
+  - The primary AI execution engine is Gemini CLI (Pro for heavy tasks, Flash for real-time).
+  - Any CLI-based AI agent can work with this vault — it is agent-agnostic by design.
+  - All scheduled automations run as macOS LaunchAgents via a compiled C wrapper
+    (`household-runner`) that invokes thin compatibility scripts. Real orchestration,
+    policy, and action execution live in `app/`.
+  - Credentials (BlueBubbles password, webhook token) live in ~/.household.env,
+    never in source files.
+
+  STEP 1: SCAFFOLD DIRECTORIES
+  ============================
+  Create (if they don't exist):
+  - /Context
+  - /Projects
+  - /Briefs/daily
+  - /Briefs/weekly
+  - /recipes
+  - /scripts
+  - /app
+  - /tests
+  - /inbox/voice
+  - /logs
+  - /LaunchAgents
+  - /.claude
+  - /.codex
+  - /.superset
+
+  STEP 1.5: VERIFY REQUIRED ACCOUNTS AND TOOLS
+  ============================================
+  Before Step 2, confirm the external systems are ready. Do not jump into
+  Google Workspace ingestion until these checks are done.
+
+  1. Confirm the host Mac setup:
+     - Ask the user whether the automation will run under a dedicated macOS
+       account that is separate from their normal personal account.
+     - If not, tell them to create a dedicated Standard account first and pause
+       here until they have done it or explicitly choose to continue anyway.
+
+  2. Verify Gemini CLI:
+     - Run: `gemini --version`
+     - If missing, walk the user through:
+       - `brew install gemini-cli`
+       - or `npm install -g @google/gemini-cli`
+     - Then run: `gemini auth`
+     - If auth fails, stop and help fix it before continuing.
+
+  3. Verify `gws`:
+     - Run: `gws --version`
+     - If missing, walk the user through:
+       - `brew install gws`
+       - `gws auth`
+     - Then verify these all work:
+       - `gws contacts list`
+       - `gws calendar list --days 7`
+       - `gws gmail list --label inbox --limit 5`
+       - `gws tasks list --all-lists`
+     - If these do not work, stop and help fix `gws` before Step 2. Do not
+       pretend ingestion happened.
+
+  4. Verify BlueBubbles for iMessage:
+     - Ask whether the user wants iMessage working during this setup.
+     - If yes, walk them through:
+       - Install BlueBubbles from `bluebubbles.app`
+       - Sign the Messages app into the dedicated household Apple ID on the
+         dedicated macOS runtime account
+       - Start BlueBubbles and confirm it can send messages
+       - Create `~/.household.env` with:
+         - `BB_PASSWORD="your-bluebubbles-password"`
+         - `WEBHOOK_TOKEN="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"`
+         - `chmod 600 ~/.household.env`
+       - In BlueBubbles webhook settings, set:
+         - `http://127.0.0.1:5005/webhook?token=YOUR_WEBHOOK_TOKEN`
+       - Explain that `YOUR_WEBHOOK_TOKEN` comes from `~/.household.env`
+     - If no, continue setup but write `TODO: BlueBubbles setup pending` into
+       the appendix / follow-up notes so the vault is not treated as fully live.
+
+  STEP 2: INGEST FROM GOOGLE WORKSPACE
+  =====================================
+  Before asking the user anything, run gws to pre-populate what you can
+  infer automatically. This reduces interview burden and gives the agent
+  a head start on real household data.
+
+  Run each of the following. If a command fails after the Step 1.5 walkthrough,
+  note it accurately in the appendix and continue only with what actually worked.
+  Do not claim that Google data was imported if it was not.
+
+  2a. CONTACTS — infer cast of characters
+      gws contacts list
+      Extract: names, relationships (if inferrable from labels/groups),
+      email addresses, and phone numbers for household members and school
+      contacts. Pre-fill "Cast of Characters" with what you find.
+      Flag anyone who appears frequently but whose role is unclear.
+
+  2b. CALENDAR — infer routines, rhythms, and recurring commitments
+      gws calendar list --days 60
+      Extract:
+      - Recurring events → seed "Routines and Rhythms"
+      - School events, pickups, or drop-offs → seed "Projects/Pickups.md"
+      - Upcoming travel → seed "Projects/Travel Planning.md"
+      - Calendars present (e.g. "School", "Work", "Family") → seed
+        "Systems of Record" with the list of shared calendars and their IDs
+
+  2c. GMAIL — infer communication patterns and open loops
+      gws gmail list --label inbox --unread --limit 50
+      Extract:
+      - Recurring senders (school, teachers, clubs, services) → note in
+        "Systems of Record" and flag for Cast of Characters if not already listed
+      - Subject-line patterns → infer communication style (brief updates?
+        long threads? school newsletters?)
+      - Any messages that look like action items or unresolved logistics →
+        seed "Open Loops"
+
+  2d. GOOGLE TASKS — infer operating priorities and open loops
+      gws tasks list --all-lists
+      Extract:
+      - Overdue tasks → seed "Open Loops"
+      - Task list names and IDs → note in "Systems of Record"
+      - High-frequency task topics → seed "Operating Priorities"
+
+  After running all four, summarize what you found to the user:
+  "Here is what I was able to infer from your Google Workspace before
+  we start the interview: [summary]. I'll pre-fill these sections and
+  ask you to confirm or correct them rather than starting from scratch."
+
+  IMPORTANT: Capture all Google Workspace IDs (Calendar IDs, Task List IDs)
+  in the "Systems of Record" section of _AI_CONTEXT.md. All recipes and
+  scripts will reference these IDs dynamically from that section.
+
+  STEP 3: INTERVIEW — one section at a time
+  ==========================================
+  Ask about each section below ONE AT A TIME. Wait for the user's answer
+  before moving to the next section. Do not ask multiple sections in a
+  single message.
+
+  For each section:
+  - Show what you pre-filled from Step 2 (if anything)
+  - Ask the user to confirm, correct, or expand
+  - If the user says "skip" or "TODO", write TODO and move on
+  - Write the answer into Context/_AI_CONTEXT.md before asking the next question
+
+  Context/_AI_CONTEXT.md must contain these sections in this exact order:
+  1. Household Charter
+  2. Current Season
+  3. Cast of Characters
+  4. Family Rules
+  5. Routines and Rhythms
+  6. Communication Style
+  7. Systems of Record
+  8. Permissions and Autonomy
+  9. Operating Priorities
+  10. Default Workflows
+  11. Open Loops
+  12. Interview Backlog
+
+  SECTION ORDER AND QUESTIONS
+  ----------------------------
+
+  3.1 HOUSEHOLD CHARTER
+  [Voice tip: great one to dictate — speak naturally about what you want
+  this system to do for your family.]
+  Ask exactly: "In a few sentences, what is this system for? What does a
+  well-run week look like for your household? What are you most trying to fix?"
+
+  3.2 CURRENT SEASON
+  Ask exactly: "What phase of life is the household in right now? (e.g. back
+  to school, new baby, both parents working full-time, travel-heavy stretch)"
+
+  3.3 CAST OF CHARACTERS
+  Show pre-filled names from contacts. Then ask exactly:
+  "Does this list look right? Anyone missing — kids, regular caregivers,
+  key school contacts? For each person, what's their role and anything
+  the agent should know about them?"
+  [Voice tip: easier to rattle off details out loud than type them.]
+
+  Then ask exactly: "What are the phone numbers and email addresses for
+  the household adults? These will be used for iMessage whitelisting and
+  brief delivery."
+
+  3.4 FAMILY RULES
+  [Voice tip: just talk through your house rules — the agent will
+  structure them. Things like dietary restrictions, screen time,
+  bedtime, who handles what.]
+  Ask exactly: "What are the non-negotiable rules for the household?
+  Include dietary restrictions, schedule constraints, and anything the
+  agent must never do or assume."
+
+  3.5 ROUTINES AND RHYTHMS
+  Show pre-filled recurring events from calendar. Then ask exactly:
+  "Does this look like your actual weekly rhythm? What's missing?
+  Walk me through a typical Monday-to-Sunday if it's easier."
+  [Voice tip: walk through the week out loud — morning routine,
+  school run, work schedules, evenings, weekends.]
+
+  Then ask exactly: "What is the pickup and dropoff schedule for each kid?
+  Who handles each day? What are the exact times and locations?"
+
+  Then ask exactly: "What does the meal routine look like? Who cooks which
+  nights? Any standing dinner rules (e.g. leftovers night, takeout night)?"
+
+  3.6 COMMUNICATION STYLE & PERSONALITY
+  Show inferred style from Gmail patterns. Then ask exactly:
+  "How do you want the agent to communicate with you? Short bullet
+  summaries, or more detail? Any format preferences for the daily brief?"
+
+  Then ask exactly: "Your iMessage bot needs a personality. By default it
+  channels Mary Poppins — warm, concise, 'practically perfect' energy.
+  Want to keep that, or would you prefer a different tone? Give it a name
+  if you like."
+
+  Write the personality and name into a 'Household Personality & Tone'
+  section of _AI_CONTEXT.md. All recipes reference this section for tone.
+  Note: the default name is "Barney" (short for Second Brain).
+
+  3.7 SYSTEMS OF RECORD
+  Show pre-filled list of calendars, task lists, and recurring senders.
+  Ask exactly: "Is this the complete picture of your household's digital
+  systems? Anything else the agent should know about — shared docs, a
+  family Notion, a shared notes app?"
+
+  Ensure this section contains:
+  - Primary shared calendar name and Calendar ID
+  - Google Tasks list name and Task List ID
+  - BlueBubbles chat GUID for the family group chat
+  - Email addresses for brief delivery
+
+  3.8 PERMISSIONS AND AUTONOMY
+  Ask exactly: "Who can the agent message directly without asking you first?
+  (Typically just the household adults.) What else can it do autonomously
+  — create calendar events, complete tasks, send emails?"
+
+  3.9 OPERATING PRIORITIES
+  Show inferred priorities from tasks and calendar density. Then ask exactly:
+  "What are the top 3 things you want this system to make reliably better?
+  Rank them."
+
+  3.10 DEFAULT WORKFLOWS
+  Ask exactly: "Are there any recurring workflows you want the agent to
+  follow? For example: when a school email mentions a deadline, always
+  create a calendar event AND a task. When a schedule change affects
+  pickups, always check availability and reassign if needed."
+
+  3.11 OPEN LOOPS
+  Show pre-filled open loops from Gmail and Tasks. Then ask exactly:
+  "Anything else currently unresolved or falling through the cracks that
+  the agent should know about from day one?"
+  [Voice tip: good one to brain-dump out loud.]
+
+  3.12 INTERVIEW BACKLOG
+  After all sections are done, review what is still marked TODO and list
+  them here as questions for future sessions. Tell the user:
+  "These sections are still incomplete. The agent will ask about them in
+  future sessions as it learns more context."
+
+  STEP 4: WRITE OPERATING FILES
+  ==============================
+  Using what was learned in Steps 2 and 3, create:
+  - Projects/Pickups.md — pre-fill with pickup events from calendar
+  - Projects/Meal Planning.md — blank template with dietary rules noted
+  - Projects/Tasks.md — pre-fill with overdue/active tasks from gws
+  - Projects/Travel Planning.md — pre-fill with upcoming travel from calendar
+  - Briefs/Session Log.md — empty log file
+  - HOUSEHOLD_AI.log — empty AI decision log
+
+  Projects/Pickups.md must contain these sections in this order:
+  1. ## Recurring Schedule — standing weekly patterns per kid. Never modified by automation.
+  2. ## Upcoming Events — markdown table for one-time events, deadlines, schedule changes.
+     Auto-populated by the school assistant. Cleared weekly by the weekly review.
+     Columns: Date | Kid | Event | Notes
+  3. ## Confirmed Activities (Spring)
+  4. ## Confirmed Activities (Summer)
+  5. ## Dropoffs
+  6. ## Pickup Windows
+
+  Keep the distinction clear:
+  - Context/ is durable household memory
+  - Projects/ is the active working surface
+
+  STEP 5: WRITE AGENT INSTRUCTIONS
+  ==================================
+  Ensure these files exist and contain the correct rules:
+  - AGENTS.md
+  - GEMINI.md
+  - .claude/instructions.md
+  - .codex/instructions.md
+  - .superset/config.json
+
+  Mandatory agent rules:
+  - Read Context/_AI_CONTEXT.md at the start of every session.
+  - Use gws for Google Workspace access by default.
+  - Use qmd for cross-file memory before guessing.
+  - Log material decisions into Briefs/Session Log.md.
+  - Do not send messages to anyone not listed as a direct-send contact
+    without explicit approval.
+  - Calendar writes are allowed when they reduce coordination tax and do not
+    conflict with explicit constraints.
+  - Encourage voice dictation such as Wispr Flow when filling context or
+    operating files.
+
+  STEP 6: WRITE RECIPES
+  =====================
+  Create the following recipe files in /recipes.
+
+  6a. recipes/daily-brief.yaml
+  Runs every day at 7:00am via com.household.dailybrief LaunchAgent.
+  Receives pre-fetched calendar, tasks, mail policy context, and vault context via stdin
+  from the Python automation service.
+  - Focus on today only. Does NOT generate a tomorrow file.
+    (Tomorrow preview is handled by the evening check-in at 8:00pm.)
+  - Pull from shared calendar, Google Tasks, and trusted project/vault context.
+  - Be deterministic and prescriptive.
+  - NO live tools. The recipe is text-generation only.
+  - Output the full markdown brief plus a ```json action block.
+  - Write output to Briefs/daily/YYYY-MM-DD.md (today only) via the Python app.
+  - Optimize for:
+    1. No pickup confusion
+    2. Meal and shopping readiness
+    3. Visible overdue household work
+    4. Early detection of scheduling conflicts
+  - Use this exact output structure:
+    1. Strategic Pulse
+    2. Pickups Today
+    3. Pickups Next 2 Days
+    4. Meal Plan Status
+    5. Shopping List Status
+    6. Top Tasks
+    7. Risks or Conflicts
+    8. Decisions Needed
+    9. Appendix
+
+  6b. recipes/weekly-review.yaml
+  Runs every Sunday at 6:00pm via com.household.weeklyreview LaunchAgent.
+  Receives pre-fetched calendar (10 days), tasks, and mail summary context via stdin.
+  - Be deterministic and prescriptive.
+  - NO live tools. The recipe is text-generation only.
+  - Output markdown plus a ```json action block.
+  - Optimize for:
+    1. Next week's pickup clarity
+    2. Meal-planning readiness
+    3. Overdue-task cleanup
+    4. Travel and school-event preparedness
+  - Write output to Briefs/weekly/YYYY-Www.md.
+  - Use this exact output structure:
+    1. Weekly Pulse
+    2. What Worked
+    3. What Slipped
+    4. Pickup Risks Next Week
+    5. Meal Plan and Shopping Gaps
+    6. Overdue Tasks
+    7. Travel and School Prep
+    8. Top 3 Priorities for Next Week
+    9. Appendix
+
+  6c. recipes/imessage-checkin.yaml
+  Runs via run-automation.sh checkin (Midday) and as Phase 2 of the evening command.
+  Receives pre-fetched pickups, meals, tasks, and calendar via stdin from the Python app.
+  The checkin command pre-fetches 2 days of calendar data (--days 2) so the evening
+  check-in has tomorrow's events available.
+  - Generate a single concise iMessage-length nudge.
+  - Midday: focus on afternoon pickups, dinner plan, and open tasks. Max 4 lines.
+  - Evening: recap of today + TOMORROW PREVIEW with explicit assignments. Max 5 lines.
+  - OUTPUT FORMAT: The very first line must be [MESSAGE], followed by the nudge text.
+    Nothing may appear before [MESSAGE]. The Python runner strips everything before it.
+  - Persona must follow _AI_CONTEXT.md personality guidelines.
+  - Output plain text plus a ```json action block.
+
+  6d. recipes/school-extractor.yaml
+  Runs as Phase 1 of the evening command (8:00pm daily).
+  Also available as a standalone command: run-automation.sh school-assistant.
+  Extracts actionable information from school emails.
+
+  AIR GAP: This recipe uses a two-step architecture. Step 1 (this recipe) reads
+  emails and outputs structured JSON only — it has NO tools and cannot take any
+  actions. Step 2 (`app/actions.py`) validates and executes hardcoded commands.
+  The model never has both email content and tool access at the same time.
+
+  - Read-only. Has NO tools. Cannot take actions directly.
+  - Receives pre-fetched context and full email JSON bodies via stdin.
+  - Context includes: _AI_CONTEXT.md, Pickups.md, Availability.md, Meal Planning.md,
+    21-day calendar, and current tasks.
+  - Identify new actionable items (events, deadlines, schedule changes, tasks).
+  - Check for duplicates against the pre-fetched calendar and tasks.
+  - For schedule changes, check Availability.md for the assigned parent and
+    calendar for conflicts, and include reassignment details if needed.
+  - OUTPUT: Valid JSON array ONLY. No commentary, no narration.
+  - Each item must have: action, title, date, and optional notes.
+  - Supported action types: school_calendar_event, task, upcoming_event.
+  - school_calendar_event may include optional start_time/end_time in strict HH:MM
+    local format. If time fields are omitted, the event becomes all-day.
+  - Use upcoming_event for one-time events, early dismissals, schedule changes,
+    deadlines. These are written to the Upcoming Events table in Projects/Pickups.md.
+    Never modify the Recurring Schedule section.
+  - For upcoming_event with schedule changes, also include: change_type, new_time
+    (if applicable), and reassignment object (pickup_parent, dinner_parent, reason)
+    if a conflict was detected.
+  - The shell script (run-automation.sh) parses this JSON and executes all actions.
+    This keeps email content isolated from tool execution.
+
+  Example output:
+  [
+    {"action": "school_calendar_event", "title": "Spirit Day", "date": "2026-03-20", "notes": "Wear school colors"},
+    {"action": "school_calendar_event", "title": "Spring Concert", "date": "2026-03-22", "start_time": "18:00", "end_time": "19:00", "notes": "Gym"},
+    {"action": "task", "title": "Pack costume for Spirit Day", "due": "2026-03-19"},
+    {"action": "upcoming_event", "title": "Early dismissal Friday", "date": "2026-03-20", "change_type": "early_dismissal", "new_time": "12:30pm", "notes": "Minimum day"}
+  ]
+
+  Do NOT define any tools in this recipe. No run_shell_command, no gws, no notify.
+  The model is read-only — it extracts and outputs, the Python action layer acts.
+
+  6e. recipes/meal-planner.yaml
+  Runs every Sunday at 4:00pm via com.household.mealplanner LaunchAgent.
+  Receives current Projects/Meal Planning.md and current tasks via stdin.
+  - Draft the meal plan for the upcoming week (Mon–Sun).
+  - Follow the rotation: alternate dinner owners between household adults.
+  - NO live tools. Output the full file content plus a ```json action block.
+  - Ensure variety across the week.
+  - Refresh the CURRENT WEEK PLAN section in Projects/Meal Planning.md.
+  - Refresh the grocery list section.
+  - Request a "Store Run" task via JSON, not direct tool calls.
+
+  6f. recipes/message-handler.yaml
+  Triggered in real time by webhook_listener.py whenever a whitelisted user sends
+  an iMessage to the household group chat.
+  - Parse intent: greeting, question, task creation, calendar event, or swap.
+  - NO live tools. This is a planning-only recipe.
+  - Output a single JSON object with:
+    - `reply_text`
+    - `actions`
+  - Supported action requests:
+    - task
+    - calendar_event
+    - availability_append
+    - meal_plan_write
+    - session_log_append
+  - PERSONA: Follow personality, tone, and style from Context/_AI_CONTEXT.md strictly.
+  - OUTPUT: JSON object only. No markdown, no narration, no preamble.
+    The caller uses --output-format json and reads the response field directly.
+  - The Python message service decides which requested actions are actually allowed.
+
+  Tooling rules for all recipes:
+  - Recipes are prompt contracts, not execution layers.
+  - External data may be passed into context, but recipes must not execute live side effects.
+  - Reference Calendar IDs and Task List IDs from _AI_CONTEXT.md Systems of Record.
+  - Only mark a source unavailable after a real command failure in the caller.
+
+  STEP 7: INSTALL THE AUTOMATION RUNTIME
+  =======================================
+  The automation runtime (app/, scripts/, recipes/, tests/, LaunchAgents/)
+  ships as checked-in code with this template. Do NOT generate these files.
+  Reuse the checked-in versions so every household starts from the same,
+  reviewed baseline.
+
+  If these directories are already present in {{ vault_path }}, keep them.
+  If setup is running from a separate template checkout, copy the checked-in
+  directories into the vault:
+    cp -r ./app {{ vault_path }}/app
+    cp -r ./scripts {{ vault_path }}/scripts
+    cp -r ./recipes {{ vault_path }}/recipes
+    cp -r ./tests {{ vault_path }}/tests
+    cp -r ./LaunchAgents {{ vault_path }}/LaunchAgents
+    cp ./.gitignore {{ vault_path }}/.gitignore
+
+  After cloning, compile the security wrapper:
+    cc -O2 -Wall -Wextra -o {{ vault_path }}/scripts/household-runner \
+       {{ vault_path }}/scripts/household-runner.c
+    chmod +x {{ vault_path }}/scripts/household-runner
+
+  What the household-runner binary does (do not regenerate it):
+  - Compiled C binary that is the ONLY binary granted Full Disk Access.
+  - Resolves its own location to find the scripts/ directory.
+  - Only executes .sh and .py files within that directory.
+  - Rejects path traversal (no "/" or ".." in script names).
+  - Picks interpreter: .sh → /bin/zsh, .py → /usr/bin/python3.
+  - All LaunchAgent ProgramArguments pass only the filename, not a full path.
+
+  STEP 8: WRITE LAUNCHAGENTS
+  ==========================
+  Create the following plist files in /LaunchAgents. These are also installed to
+  ~/Library/LaunchAgents/ to activate them.
+
+  All plists must:
+  - Use scripts/household-runner as the program (NOT /bin/zsh or /usr/bin/python3)
+  - Pass the script name as first arg (e.g., "run-automation.sh"), then command args
+  - Include EnvironmentVariables for HOME, USER, and PATH (include homebrew and
+    superset paths: /opt/homebrew/bin and ~/.superset/bin)
+  - Route stdout and stderr to files in the logs/ directory
+  - Use RunAtLoad: false (except the webhook listener)
+
+  Schedule:
+  - com.household.dailybrief:     daily at 07:00   → run-automation.sh daily-brief
+  - com.household.checkin.midday: daily at 11:45   → run-automation.sh checkin Midday
+  - com.household.evening:        daily at 20:00   → run-automation.sh evening
+  - com.household.mealplanner:    Sundays at 16:00 → run-automation.sh meal-planner
+  - com.household.weeklyreview:   Sundays at 18:00 → run-automation.sh weekly-review
+  - com.household.brain-listener: RunAtLoad + KeepAlive → webhook_listener.py
+
+  Note: The evening agent replaces the former com.household.checkin.evening and
+  com.household.school agents. It runs both phases in sequence with shared data fetching.
+
+  Important: Use Weekday key (not Day) for day-of-week scheduling in StartCalendarInterval.
+  Sunday = Weekday 0 (or 7).
+
+  STEP 9: WRITE AUTOMATION GUIDE
+  ===============================
+  Create recipes/AUTOMATION_GUIDE.md as the authoritative reference for:
+  - The daily rhythm table (all automations with times, models, commands)
+  - System architecture (Python app core, wrappers, central config, LaunchAgents)
+  - File write architecture (app/actions.py, vault-write.sh compatibility, path validation)
+  - Security hardening:
+    - household-runner and scoped FDA (system-level)
+    - Prompt injection defense (defense in depth):
+      Layer 1: Untrusted content wrapping — all Gmail/external data is passed into recipes
+      as untrusted context so the model treats it as data, not instructions.
+      Layer 2: Two-stage architecture — school-extractor and message-handler are planning-only.
+      The model never has both untrusted content and live tool execution.
+      Layer 3: Python action allowlists — app/actions.py decides which actions are permitted
+      for each automation before any side effect happens.
+      Layer 4: sanitize_field() / sanitize_action_text() — model-generated fields are truncated,
+      stripped of shell metacharacters, and checked before use.
+      Layer 5: file write restrictions — the action layer blocks writes to _AI_CONTEXT.md,
+      Context/, scripts/, and non-markdown/executable/secrets paths.
+      Layer 6: school event validation — school_calendar_event date/time fields are strictly
+      validated before calendar insertion.
+      Layer 7: Phone allowlist and send auth — the message service only processes iMessages
+      from whitelisted handles, and `/send` requires an internal token.
+  - Real-time communication (webhook listener, BlueBubbles integration)
+  - Recipe output conventions
+  - Pickups.md section ownership
+  - Systems of record (calendar, tasks, vault)
+  - Logs
+  - How to add new automations
+  - Smoke testing (`scripts/smoke-tests.sh` and `python3 -m unittest discover -s tests -v`)
+
+  STEP 10: BOOTSTRAP SUMMARY
+  ===========================
+  Tell the user exactly what remains after all files are created:
+
+  DEPENDENCIES TO INSTALL
+  -----------------------
+  1. Install Gemini CLI:       brew install gemini-cli
+                               or: npm install -g @google/gemini-cli
+  2. Authenticate Gemini CLI:  gemini auth  (OAuth with household Google account)
+  3. Install gws:              brew install gws
+                               Authenticate: gws auth
+  4. Install Python 3.9+ if needed. No additional Python packages are required
+     for the current runtime.
+  5. Install BlueBubbles:      Download from bluebubbles.app
+                               Run on the spare Mac signed into the household Apple ID
+
+  CREATE SECRETS FILE
+  -------------------
+  7. Create ~/.household.env (mode 600, owner-readable only):
+       BB_PASSWORD="your-bluebubbles-password"
+       WEBHOOK_TOKEN="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+       chmod 600 ~/.household.env
+
+  CONFIGURE BLUEBUBBLES WEBHOOK
+  -----------------------------
+  8. In BlueBubbles settings → Webhooks, set the URL to:
+       http://127.0.0.1:5005/webhook?token=YOUR_WEBHOOK_TOKEN
+     (Use the WEBHOOK_TOKEN value from ~/.household.env)
+
+  COMPILE THE RUNNER
+  ------------------
+  9. Compile household-runner:
+       cc -O2 -Wall -Wextra -o scripts/household-runner scripts/household-runner.c
+       chmod +x scripts/household-runner
+  10. Grant Full Disk Access to scripts/household-runner ONLY:
+        System Settings → Privacy & Security → Full Disk Access
+        Do NOT add /bin/zsh or /usr/bin/python3
+
+  INSTALL LAUNCHAGENTS
+  --------------------
+  11. Copy plists to ~/Library/LaunchAgents/:
+        cp LaunchAgents/com.household.*.plist ~/Library/LaunchAgents/
+  12. Load all agents:
+        for f in ~/Library/LaunchAgents/com.household.*.plist; do launchctl load "$f"; done
+
+  VERIFY
+  ------
+  13. Confirm brain-listener is running and token works:
+        TOKEN=$(grep WEBHOOK_TOKEN ~/.household.env | cut -d'"' -f2)
+        curl -s -o /dev/null -w "%{http_code}" -X POST \
+          "http://127.0.0.1:5005/webhook?token=$TOKEN" \
+          -H "Content-Type: application/json" -d '{"event":"test"}'
+        → Should return 200, not 401 or connection error.
+  14. Run syntax checks:
+        python3 -m py_compile app/*.py tests/*.py scripts/webhook_listener.py
+        zsh -n scripts/run-automation.sh scripts/send-briefs.sh scripts/notify.sh scripts/smoke-tests.sh
+  15. Run smoke tests:
+        zsh scripts/smoke-tests.sh
+  16. Send a test iMessage from a whitelisted number to the household group chat.
+        → Should receive an acknowledgement and a reply within ~30 seconds.
+  17. Run a manual daily brief to verify Google Workspace access:
+        cd "{{ vault_path }}" && /bin/zsh scripts/run-automation.sh daily-brief
+  18. Install Obsidian and point it at the vault folder to read briefs and project files.
+
+  Then tell the user:
+  "Context/_AI_CONTEXT.md is now seeded. You can improve it any time by
+  opening the vault with your AI agent and saying 'update my household
+  context'. Use Wispr Flow to speak your updates — it's faster than typing.
+
+  If you get stuck on any manual step — especially BlueBubbles or
+  LaunchAgents — just open the vault in your AI agent and describe the
+  problem. The agent has full context on the architecture and can walk
+  you through troubleshooting."
+
+prompt: "Set up a new Household Second Brain vault at {{ vault_path }}"
+
+parameters:
+  - key: vault_path
+    input_type: string
+    requirement: required
+    description: "Full path to the new household vault folder"
