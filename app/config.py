@@ -25,17 +25,6 @@ def _env_flag(value: str | None, default: bool) -> bool:
     return value.strip().lower() not in {"0", "false", "no", "off", ""}
 
 
-def _csv_tuple(value: str) -> Tuple[str, ...]:
-    return tuple(item.strip() for item in value.split(",") if item.strip())
-
-
-def _bin_dir(binary: str) -> str:
-    if "/" not in binary:
-        return ""
-    parent = str(Path(binary).parent)
-    return "" if parent == "." else parent
-
-
 @dataclass(frozen=True)
 class Config:
     vault_root: Path
@@ -92,8 +81,16 @@ class Config:
 
         vault_root = Path(merged.get("VAULT_ROOT", str(default_root)))
         send_token = merged.get("SEND_API_TOKEN") or merged.get("WEBHOOK_TOKEN", "")
-        recipients = _csv_tuple(merged.get("DAILY_BRIEF_RECIPIENTS", ""))
-        valid_handles = _csv_tuple(merged.get("VALID_IMESSAGE_HANDLES", ""))
+        recipients = tuple(
+            item.strip()
+            for item in merged.get("DAILY_BRIEF_RECIPIENTS", "").split(",")
+            if item.strip()
+        )
+        valid_handles = tuple(
+            item.strip()
+            for item in merged.get("VALID_IMESSAGE_HANDLES", "").split(",")
+            if item.strip()
+        )
 
         return cls(
             vault_root=vault_root,
@@ -123,15 +120,9 @@ class Config:
 
     def runtime_env(self, extra: Dict[str, str] | None = None) -> Dict[str, str]:
         env = dict(os.environ)
-        path_parts = ["/usr/local/bin", "/opt/homebrew/bin"]
-        for binary in (self.gemini_bin, self.gws_bin):
-            bin_dir = _bin_dir(binary)
-            if bin_dir and bin_dir not in path_parts:
-                path_parts.append(bin_dir)
-        path_parts.append(env.get("PATH", "/bin:/usr/bin"))
         env.update(
             {
-                "PATH": ":".join(path_parts),
+                "PATH": f"/usr/local/bin:/opt/homebrew/bin:{Path(self.gemini_bin).parent}:{env.get('PATH', '/bin:/usr/bin')}",
                 "HOME": self.runtime_home,
                 "USER": self.runtime_user,
                 "VAULT_ROOT": str(self.vault_root),
@@ -150,3 +141,4 @@ def iter_shell_exports(config: Config) -> Iterable[str]:
     yield f"export VAULT_ROOT={config.vault_root}"
     yield f"export GEMINI={config.gemini_bin}"
     yield f"export GWS={config.gws_bin}"
+

@@ -49,28 +49,25 @@ class AutomationService:
         result = self.recipes.run_markdown_recipe(
             "daily-brief.yaml",
             context,
-            {"vault_path": str(self.config.vault_root), "current_date": current_date},
+            {"current_date": current_date},
             model=self.config.model_pro,
             approval_mode=self.config.gemini_approval_mode_safe,
             output_file=output_file,
         )
-        self.actions.execute_scheduled_actions(result.actions, {"task", "file_append"})
         self.briefs.send_current_daily_brief()
 
     def checkin(self, checkin_type: str) -> None:
+        recipe = "midday-checkin.yaml" if checkin_type == "Midday" else "evening-checkin.yaml"
         result = self.recipes.run_markdown_recipe(
-            "imessage-checkin.yaml",
+            recipe,
             self.contexts.build_checkin(),
-            {
-                "checkin_type": checkin_type,
-                "current_timestamp": current_timestamp(),
-                "vault_path": str(self.config.vault_root),
-            },
+            {"current_timestamp": current_timestamp()},
             model=self.config.model_flash,
             approval_mode=self.config.gemini_approval_mode_safe,
         )
         if not result.content.strip():
             raise RuntimeError("No check-in reply generated")
+        print(f"[{checkin_type} Check-in] {result.content}")
         self.actions.messenger.send_message(self.config.default_chat_guid, result.content, context_label="checkin")
 
     def school_assistant(self) -> None:
@@ -78,17 +75,23 @@ class AutomationService:
         if not email_content.strip():
             print("No new school emails today. Skipping.")
             return
-        allowed = {"upcoming_event", "task"}
-        if self.config.enable_school_assistant_calendar_events:
-            allowed.add("school_calendar_event")
+        # Call 1: analyze emails → free-form text
         result = self.recipes.run_markdown_recipe(
             "school-extractor.yaml",
             self.contexts.build_school_context(email_content),
-            {"current_timestamp": current_timestamp(), "vault_path": str(self.config.vault_root)},
+            {"current_timestamp": current_timestamp()},
             model=self.config.model_flash,
             approval_mode=self.config.gemini_approval_mode_safe,
         )
-        self.actions.execute_scheduled_actions(result.actions, allowed)
+        analysis = result.content.strip()
+        if not analysis or "no actionable" in analysis.lower():
+            return
+        # Call 2: convert analysis → JSON array (no vault context, no tools)
+        allowed = {"upcoming_event", "task"}
+        if self.config.enable_school_assistant_calendar_events:
+            allowed.add("school_calendar_event")
+        actions = self.recipes.run_school_extraction(analysis, self.config.model_flash)
+        self.actions.execute_scheduled_actions(actions, allowed)
 
     def evening(self) -> None:
         self.school_assistant()
@@ -100,13 +103,13 @@ class AutomationService:
         result = self.recipes.run_markdown_recipe(
             "weekly-review.yaml",
             context,
-            {"vault_path": str(self.config.vault_root), "current_date": current_date},
+            {"current_date": current_date},
             model=self.config.model_pro,
             approval_mode=self.config.gemini_approval_mode_safe,
             output_file=output_file,
         )
-        self.actions.execute_scheduled_actions(result.actions, {"file_append"})
-        self.briefs.send_current_daily_brief()
+        self.actions.execute_scheduled_actions(result.actions, {"task", "file_append"})
+        self.briefs.send_current_weekly_review()
 
     def meal_planner(self) -> None:
         context, current_date = self.contexts.build_meal_planner()
@@ -114,7 +117,7 @@ class AutomationService:
         result = self.recipes.run_markdown_recipe(
             "meal-planner.yaml",
             context,
-            {"vault_path": str(self.config.vault_root), "current_date": current_date},
+            {"current_date": current_date},
             model=self.config.model_pro,
             approval_mode=self.config.gemini_approval_mode_safe,
             output_file=output_file,

@@ -3,16 +3,16 @@ title: "Household Weekly Review"
 description: "Generates a deterministic household weekly review focused on next-week readiness."
 instructions: |
   You are generating the weekly review for a shared household. 
-  PERSONA & TONE: You MUST STRICTLY follow the personality, tone, and style guidelines defined in {{ vault_path }}/Context/_AI_CONTEXT.md. Do not invent your own tone.
+  PERSONA & TONE: You MUST STRICTLY follow the personality, tone, and style guidelines defined in the AI_CONTEXT section of the provided CONTEXT. Do not invent your own tone.
 
   CORE DIRECTIVES
   ===============
-  1. DO NOT RE-FETCH: Use the provided `CONTEXT` (Calendar, Tasks, Mail) as the source of truth. Do not call `gws` to re-list what is already there. ONLY run `gws` to fetch the full body of a specific important email or document if needed.
-  2. READ VAULT: Consult `Context/_AI_CONTEXT.md`, `Projects/`, and the current week's `Briefs/daily/` files.
-  3. EVALUATE: 
-     - AI PERFORMANCE: Are instructions being followed?
-     - SYSTEM HEALTH: Any script/permission issues in `Briefs/Session Log.md`?
-  4. OUTPUT: Write to: {{ vault_path }}/Briefs/weekly/[YYYY-WNN].md
+  1. DO NOT USE TOOLS: All data is in the provided CONTEXT. Do NOT read files, write files, call APIs, run shell commands, or use any tools. Your ONLY job is to produce text output.
+  2. SOURCES OF TRUTH (all provided in CONTEXT): Calendar, Tasks, Mail, AI_CONTEXT, daily briefs for the week, meal planning, pickups, availability, and session log.
+  3. EVALUATE:
+     - AI PERFORMANCE: Are instructions being followed? Use DAILY_BRIEFS and SESSION_LOG in CONTEXT.
+     - SYSTEM HEALTH: Any script/permission issues in SESSION_LOG?
+  4. OUTPUT: Your text output is the file content. Do not attempt to write files yourself — the calling system handles that.
 
   STRUCTURE
   =========
@@ -48,9 +48,6 @@ instructions: |
 prompt: "Generate this week's household review based on the provided context."
 
 parameters:
-  - key: vault_path
-    input_type: string
-    requirement: required
   - key: current_date
     input_type: string
     requirement: required

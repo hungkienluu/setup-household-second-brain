@@ -42,7 +42,7 @@ ActionDispatcher   — Python dispatcher: GWS calls, file writes, notifications
 - **Single Source of Truth:** Automation logic now lives in the `app/` package. The shell scripts remain as thin compatibility wrappers so existing LaunchAgents do not need to change immediately.
 - **Central Configuration:** Common variables (`VAULT_ROOT`, binary paths, model assignments) are defined once in `scripts/config.sh` and sourced by all other scripts. Security flags also live there:
   - `ENFORCE_SEND_AUTH=1` protects the local `/send` endpoint
-  - `GEMINI_APPROVAL_MODE_SAFE=plan` forces read-only Gemini runs for scheduled automations
+  - `GEMINI_APPROVAL_MODE_SAFE=yolo` (default) controls tool approval for scheduled automations; recipes themselves instruct Gemini not to use tools
   - `ENABLE_DAILY_BRIEF_GMAIL_CONTEXT=0` keeps raw Gmail out of the auto-sent daily brief by default
   - `ENABLE_SCHOOL_ASSISTANT_CALENDAR_EVENTS=1` enables school-email events on the family calendar by default; these are created without attendees or outbound invites, and they become timed events only when the extractor returns a strict validated `HH:MM` time
   - `DEFAULT_CALENDAR_TIMEZONE` and `SCHOOL_EVENT_DEFAULT_DURATION_MINUTES` control the timezone and fallback duration for timed school markers that have a start time but no explicit end time
@@ -76,7 +76,7 @@ New scripts in `scripts/` can be executed via the runner immediately without fur
 - **Message Service:** `app/message_service.py` validates inbound webhooks, pre-fetches household context, calls Gemini in read-only planning mode, and executes only a narrow validated action set.
 - **API Gateway:** Also exposes a `/send` endpoint so all other scripts can send iMessages through a single channel (`notify.sh`). `/send` now requires an internal auth token header.
 - **Message Handler:** `recipes/message-handler.yaml` is now a planning-only recipe. It returns JSON with `reply_text` plus typed requested actions; it has no live tools.
-- **Model:** Real-time replies use **Gemini 3 Flash** for near-instant response times.
+- **Model:** Real-time replies use **Gemini 2.5 Flash** for near-instant response times.
 - **Persona:** Centrally managed in `Context/_AI_CONTEXT.md`.
 
 ## 5. Recipe Output Conventions
@@ -85,7 +85,8 @@ New scripts in `scripts/` can be executed via the runner immediately without fur
 |--------|--------------|-------|
 | `daily-brief.yaml` | Markdown + JSON actions block | Saved to `Briefs/daily/` |
 | `weekly-review.yaml` | Markdown + JSON actions block | Saved to `Briefs/weekly/` |
-| `imessage-checkin.yaml` | `[MESSAGE]` delimiter + plain text | Script extracts only content after `[MESSAGE]` to strip any AI preamble |
+| `midday-checkin.yaml` | `[MESSAGE]` delimiter + plain text | Script extracts only content after `[MESSAGE]` to strip any AI preamble |
+| `evening-checkin.yaml` | `[MESSAGE]` delimiter + plain text | Same format as midday; run as part of the combined evening automation |
 | `school-extractor.yaml` | JSON array only | No tools — shell executes only allowlisted actions, including a dedicated no-attendees school calendar event path with strict optional time validation |
 | `message-handler.yaml` | JSON object only | Returns `reply_text` plus typed action requests; the listener validates and executes them |
 | `meal-planner.yaml` | Markdown + JSON actions block | Overwrites `Projects/Meal Planning.md` |
@@ -117,4 +118,4 @@ Each LaunchAgent writes to dedicated log files in `logs/`:
   - `zsh -n scripts/run-automation.sh scripts/send-briefs.sh scripts/notify.sh scripts/smoke-tests.sh`
 
 ---
-*Last Updated: March 20, 2026*
+*Last Updated: March 23, 2026*

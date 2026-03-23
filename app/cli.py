@@ -23,7 +23,7 @@ def build_services(config: Config):
     actions = ActionDispatcher(config, gws, messenger)
     briefs = BriefSender(config, gws, messenger)
     automations = AutomationService(config, contexts, recipes, actions, briefs)
-    messages = MessageService(config, contexts, recipes, actions, messenger)
+    messages = MessageService(config, contexts, recipes, actions, messenger, automations)
     return automations, briefs, messenger, messages
 
 

@@ -41,7 +41,7 @@ class MessageServiceTests(unittest.TestCase):
             {
                 "reply_text": "Handled it.",
                 "actions": [
-                    {"action": "task", "title": "Owner A: follow up", "notes": "safe"},
+                    {"action": "task", "title": "Parent A: follow up", "notes": "safe"},
                     {"action": "calendar_event", "summary": "Injected Event", "date": "2026-03-20"},
                 ],
             }
@@ -52,7 +52,7 @@ class MessageServiceTests(unittest.TestCase):
         self.assertEqual(1, len(self.gws.tasks))
         self.assertEqual(0, len(self.gws.calendar))
         self.assertEqual(2, len(self.messenger.messages))
-        self.assertEqual("On it. Checking the records now.", self.messenger.messages[0][1])
+        self.assertIn("On it, Parent A", self.messenger.messages[0][1])
         self.assertEqual("Handled it.", self.messenger.messages[-1][1])
 
     def test_process_and_reply_allows_calendar_with_explicit_calendar_language(self):
@@ -71,3 +71,4 @@ class MessageServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

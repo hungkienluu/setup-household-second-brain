@@ -35,11 +35,15 @@ def make_config(root: Path) -> Config:
     )
 
 
+_STUB_RECIPE = 'instructions: |\n  Follow the instructions.\nprompt: "Run the recipe with {{ current_date }} {{ current_timestamp }} {{ vault_path }}"\n'
+
+
 def seed_vault(root: Path) -> None:
     (root / "Projects").mkdir(parents=True, exist_ok=True)
     (root / "Briefs" / "daily").mkdir(parents=True, exist_ok=True)
     (root / "Briefs" / "weekly").mkdir(parents=True, exist_ok=True)
     (root / "Context").mkdir(parents=True, exist_ok=True)
+    (root / "recipes").mkdir(parents=True, exist_ok=True)
     (root / "Projects" / "Pickups.md").write_text(
         "# Pickups\n\n## Upcoming Events\n| Date | Kid | Event | Notes |\n| --- | --- | --- | --- |\n"
     )
@@ -48,6 +52,13 @@ def seed_vault(root: Path) -> None:
     (root / "Projects" / "Tasks.md").write_text("# Tasks\n")
     (root / "Briefs" / "Session Log.md").write_text("# Session Log\n")
     (root / "Context" / "_AI_CONTEXT.md").write_text("# AI Context\n")
+    # Stub recipe files so _parse_recipe() works in tests
+    for name in (
+        "daily-brief.yaml", "midday-checkin.yaml", "evening-checkin.yaml",
+        "school-extractor.yaml", "weekly-review.yaml", "meal-planner.yaml",
+        "message-handler.yaml", "imessage-checkin.yaml",
+    ):
+        (root / "recipes" / name).write_text(_STUB_RECIPE)
 
 
 class FakeGWS:
@@ -108,8 +119,18 @@ class FakeGemini:
         self.stderr = stderr
         self.calls = []
 
-    def run_recipe(self, **kwargs):
+    def run_assembled(self, **kwargs):
         self.calls.append(kwargs)
+        if not self.responses:
+            raise AssertionError("FakeGemini received more calls than configured responses")
+        stdout = self.responses.pop(0)
+        return CommandResult(self.returncode, stdout, self.stderr)
+
+    def run_recipe(self, **kwargs):
+        return self.run_assembled(**kwargs)
+
+    def run_prompt(self, prompt: str, model: str, approval_mode: str):
+        self.calls.append({"prompt": prompt, "model": model, "approval_mode": approval_mode})
         if not self.responses:
             raise AssertionError("FakeGemini received more calls than configured responses")
         stdout = self.responses.pop(0)

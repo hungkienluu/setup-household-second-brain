@@ -45,13 +45,14 @@ class ActionDispatcherTests(unittest.TestCase):
         self.dispatcher.execute_scheduled_actions(
             [
                 {"action": "file_append", "path": "scripts/evil.py", "content": "oops"},
-                {"action": "task", "title": "Owner A: real task", "notes": "safe"},
+                {"action": "task", "title": "Parent A: real task", "notes": "safe"},
             ],
             {"file_append", "task"},
         )
         self.assertEqual(1, len(self.gws.tasks))
-        self.assertEqual("Owner A: real task", self.gws.tasks[0]["title"])
+        self.assertEqual("Parent A: real task", self.gws.tasks[0]["title"])
 
 
 if __name__ == "__main__":
     unittest.main()
+
