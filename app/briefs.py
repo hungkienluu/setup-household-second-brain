@@ -25,6 +25,7 @@ class BriefSender:
             self.messenger.send_message(self.config.default_chat_guid, imessage_content, context_label="daily-brief")
         html_content = self._convert_md_to_html(raw_content)
         for recipient in self.config.daily_brief_recipients:
+            print(f"[Briefs] Sending email to {recipient}")
             self._send_raw_email(recipient, f"Household Daily Brief: {date_stamp}", html_content)
 
     def send_current_weekly_review(self) -> None:

@@ -28,6 +28,10 @@
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:{{GEMINI_BIN_DIR}}</string>
         <key>VAULT_ROOT</key>
         <string>{{VAULT_ROOT}}</string>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+        <key>USER</key>
+        <string>{{RUNTIME_USER}}</string>
     </dict>
 </dict>
 </plist>
