@@ -11,12 +11,20 @@
         <string>school-assistant</string>
     </array>
     <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>20</integer>
-        <key>Minute</key>
-        <integer>30</integer>
-    </dict>
+    <array>
+        <dict>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>15</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
     <key>StandardOutPath</key>
     <string>{{VAULT_ROOT}}/logs/com.household.school.stdout.log</string>
     <key>StandardErrorPath</key>
@@ -27,6 +35,10 @@
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:{{GEMINI_BIN_DIR}}</string>
         <key>VAULT_ROOT</key>
         <string>{{VAULT_ROOT}}</string>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+        <key>USER</key>
+        <string>{{RUNTIME_USER}}</string>
     </dict>
 </dict>
 </plist>

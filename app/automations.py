@@ -40,8 +40,46 @@ class AutomationService:
             self.weekly_review()
         elif command == "meal-planner":
             self.meal_planner()
+        elif command == "eval-yesterday":
+            self.eval_yesterday()
         else:
             raise ValueError(f"Unknown command: {command}")
+
+    def eval_yesterday(self) -> None:
+        from datetime import timedelta
+        yesterday = datetime.now() - timedelta(days=1)
+        date_str = yesterday.strftime("%Y-%m-%d")
+        brief_path = self.config.vault_root / "Briefs" / "daily" / f"{date_str}.md"
+        
+        if not brief_path.exists():
+            print(f"No brief found for yesterday ({date_str}). Skipping eval.")
+            return
+            
+        brief_content = brief_path.read_text()
+        context = self.contexts.build_eval_context()
+        
+        result = self.recipes.run_json_plan(
+            "judge-brief.yaml",
+            "",
+            {
+                "context": context,
+                "brief": brief_content
+            },
+            model=self.config.model_flash,
+            approval_mode=self.config.gemini_approval_mode_safe,
+        )
+        
+        score = result.get("score", 0)
+        reasoning = result.get("reasoning", "No reasoning provided")
+        
+        log_entry = f"## Eval: {date_str} Brief\n- **Score:** {score}/5\n- **Reasoning:** {reasoning}\n\n"
+        
+        self.actions.execute_scheduled_actions([{
+            "action": "file_append",
+            "path": "Briefs/Eval Log.md",
+            "content": log_entry
+        }], {"file_append"})
+        print(f"Evaluated yesterday's brief. Score: {score}/5")
 
     def daily_brief(self) -> None:
         context, current_date = self.contexts.build_daily_brief()

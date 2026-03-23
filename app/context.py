@@ -42,6 +42,21 @@ MEAL_PLANNING:
 {read_vault_text(self.config, 'Projects/Meal Planning.md')}"""
         return context, current_date
 
+    def build_eval_context(self) -> str:
+        return f"""CONTEXT:
+PICKUPS:
+{read_vault_text(self.config, 'Projects/Pickups.md')}
+
+AVAILABILITY:
+{read_vault_text(self.config, 'Projects/Availability.md')}
+
+MEAL_PLANNING:
+{read_vault_text(self.config, 'Projects/Meal Planning.md')}
+
+CALENDAR:
+{self.gws.calendar_agenda(2)}
+"""
+
     def build_checkin(self) -> str:
         return f"""CONTEXT:
 AI_CONTEXT:
