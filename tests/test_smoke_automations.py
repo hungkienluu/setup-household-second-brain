@@ -26,7 +26,7 @@ class AutomationSmokeTests(unittest.TestCase):
         self.tempdir.cleanup()
 
     def make_service(self, gemini_output, *, gws=None, messenger=None):
-        gws = gws or FakeGWS(agenda="Fri 9am Appointment\nFri 3pm Pickup", tasks_table="NeedsAction | Parent A: admin forms")
+        gws = gws or FakeGWS(agenda="Fri 9am Appointment\nFri 3pm Pickup", tasks_table="NeedsAction | Parent A: lunch forms")
         messenger = messenger or FakeMessenger()
         contexts = ContextBuilder(self.config, gws)
         recipes = RecipeRunner(self.config, FakeGemini(gemini_output))
@@ -40,19 +40,19 @@ class AutomationSmokeTests(unittest.TestCase):
 Today looks steady. Pickups and dinner are assigned.
 
 ## 2. Drop-offs Today
-- Child A: Parent A (8:00 AM / School A)
-- Child B: Parent B (8:30 AM / School B)
+- Child A: Parent A (8:00 AM / School)
+- Child B: Parent B (8:30 AM / Montessori)
 
 ## 3. Pickups Today
-- 3:00 PM: Parent B gets Child A from School A
-- 5:00 PM: Parent A gets Child B from Activity Center
+- 3:00 PM: Parent B gets Child A from School
+- 5:00 PM: Parent A gets Child B from Montessori
 
 ## 4. Dinner Today
-Pasta — Parent B (start by 5:15 PM)
-Grocery Run (if needed): Parent A — neighborhood market — produce
+Salmon — Parent B (start by 5:15 PM)
+Grocery Run (if needed): Parent A — neighborhood market — lemons
 
 ## 5. Meal Plan Status
-Pasta tonight. Soup tomorrow.
+Salmon tonight. Pork chops tomorrow.
 
 ## 6. Pickups Next 2 Days
 - Saturday: Parent A handles Child A, Parent B handles Child B.
@@ -68,13 +68,13 @@ No major conflicts.
 1. Confirm Sunday dinner.
 
 ## 10. Top Tasks
-- Parent A: Buy produce
+- Parent A: Buy lemons
 
 ## 11. Appendix
 Calendar and tasks loaded successfully.
 
 ```json
-[{"action": "task", "title": "Parent A: Buy produce", "due": "2026-03-20", "notes": "neighborhood market"}, {"action": "file_append", "path": "Briefs/Session Log.md", "content": "Daily brief generated cleanly."}]
+[{"action": "task", "title": "Parent A: Buy lemons", "due": "2026-03-20", "notes": "neighborhood market"}, {"action": "file_append", "path": "Briefs/Session Log.md", "content": "Daily brief generated cleanly."}]
 ```"""
         )
 
@@ -84,16 +84,15 @@ Calendar and tasks loaded successfully.
         brief_path = self.root / "Briefs" / "daily" / f"{today}.md"
         self.assertTrue(brief_path.exists())
         self.assertIn("Strategic Pulse", brief_path.read_text())
-        self.assertEqual(1, len(gws.tasks))
+        self.assertEqual(0, len(gws.tasks))
         self.assertEqual(2, len(gws.sent_mail))
         self.assertEqual(1, len(messenger.messages))
-        self.assertIn("Daily brief generated cleanly.", (self.root / "Briefs" / "Session Log.md").read_text())
 
     def test_checkin_smoke(self):
         service, gws, messenger = self.make_service(
             """[MESSAGE]
 Parent B: Child A pickup at 3. Parent A: Child B pickup at 5.
-Dinner: Pasta — Parent B, start by 5:15.
+Dinner: Salmon — Parent B, start by 5:15.
 All set, spit-spot.
 
 ```json
@@ -104,7 +103,7 @@ All set, spit-spot.
         service.checkin("Midday")
 
         self.assertEqual(1, len(messenger.messages))
-        self.assertIn("Dinner: Pasta", messenger.messages[0][1])
+        self.assertIn("Dinner: Salmon", messenger.messages[0][1])
         self.assertEqual(0, len(gws.tasks))
 
     def test_school_assistant_smoke(self):
@@ -115,12 +114,16 @@ All set, spit-spot.
             gmail_listing=gmail_listing,
             gmail_messages={"msg-1": '{"id":"msg-1","snippet":"Spring concert Friday at 18:00"}'},
         )
+        # Two responses: Call 1 = analysis text, Call 2 = JSON array (wrapped in --output-format json envelope)
         service, gws, messenger = self.make_service(
-            """[
-  {"action": "school_calendar_event", "title": "Spring Concert", "date": "2026-03-22", "start_time": "18:00", "end_time": "19:00", "notes": "Gym"},
-  {"action": "upcoming_event", "title": "Early dismissal", "date": "2026-03-21", "kid": "Child A", "notes": "Minimum day"},
-  {"action": "task", "title": "Parent A: Pack event supplies", "due": "2026-03-21", "notes": "By Thursday night"}
-]""",
+            [
+                "Spring Concert on March 22 at 6pm. Early dismissal March 21 for Child A. Task: pack recital clothes by Thursday.",
+                json.dumps({"response": json.dumps([
+                    {"action": "school_calendar_event", "title": "Spring Concert", "date": "2026-03-22", "start_time": "18:00", "end_time": "19:00", "notes": "Gym"},
+                    {"action": "upcoming_event", "title": "Early dismissal", "date": "2026-03-21", "kid": "Child A", "notes": "Minimum day"},
+                    {"action": "task", "title": "Parent A: Pack recital clothes", "due": "2026-03-21", "notes": "By Thursday night"},
+                ])}),
+            ],
             gws=gws,
         )
 
@@ -142,13 +145,17 @@ All set, spit-spot.
             gmail_messages={"msg-1": '{"id":"msg-1","snippet":"Spirit day tomorrow"}'},
         )
         gemini_output = [
-            """[
-  {"action": "upcoming_event", "title": "Spirit Day", "date": "2026-03-21", "kid": "Both", "notes": "Wear blue"}
-]""",
+            # Call 1: school analysis text
+            "Spirit Day on March 21. Both kids. Wear blue.",
+            # Call 2: JSON array from analysis (--output-format json envelope)
+            json.dumps({"response": json.dumps([
+                {"action": "upcoming_event", "title": "Spirit Day", "date": "2026-03-21", "kid": "Both", "notes": "Wear blue"},
+            ])}),
+            # Call 3: evening checkin
             """[MESSAGE]
 Today was smooth sailing.
 Parent A: Child A pickup tomorrow.
-Parent B: Dinner is soup — start by 5:00.
+Parent B: Dinner is tacos — start by 5:00.
 
 ```json
 []
@@ -186,10 +193,10 @@ Healthy.
 - Need Sunday dinner.
 
 ## 7. Overdue Tasks
-- Parent A: follow up paperwork.
+- Parent A: follow up forms.
 
 ## 8. Travel and School Prep
-- Pack event supplies.
+- Pack recital clothes.
 
 ## 9. Top 3 Priorities for Next Week
 - Lock pickups.
@@ -209,21 +216,23 @@ All good.
         self.assertIn("Weekly Pulse", week_path.read_text())
         self.assertIn("Weekly review generated.", (self.root / "Briefs" / "Session Log.md").read_text())
         self.assertEqual(2, len(gws.sent_mail))
+        self.assertTrue(any("Weekly Review" in m for m in gws.sent_mail))
         self.assertEqual(1, len(messenger.messages))
+        self.assertIn("WEEKLY PULSE", messenger.messages[0][1])
 
     def test_meal_planner_smoke(self):
         service, gws, messenger = self.make_service(
             """# Meal Planning
 
 ## Current Week Plan
-- Monday: Pasta — Parent B
-- Tuesday: Soup — Parent A
+- Monday: Salmon — Parent B
+- Tuesday: Tacos — Parent A
 
 ## Grocery Assignment
 Parent A: neighborhood market run on Thursday.
 
 ```json
-[{"action": "task", "title": "Parent A: Grocery Run — neighborhood market", "due": "2026-03-22", "notes": "produce, bread"}, {"action": "file_append", "path": "Briefs/Session Log.md", "content": "Meal plan refreshed."}]
+[{"action": "task", "title": "Parent A: Grocery Run — neighborhood market", "due": "2026-03-22", "notes": "lemons, tortillas"}, {"action": "file_append", "path": "Briefs/Session Log.md", "content": "Meal plan refreshed."}]
 ```"""
         )
 

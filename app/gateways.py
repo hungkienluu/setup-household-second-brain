@@ -180,6 +180,59 @@ class GeminiClient:
         )
         return CommandResult(result.returncode, result.stdout, result.stderr)
 
+    def run_assembled(
+        self,
+        prompt: str,
+        context: str,
+        model: str,
+        approval_mode: str,
+        output_format: Optional[str] = None,
+    ) -> CommandResult:
+        """Run an assembled prompt (instructions + prompt already combined)."""
+        command = [
+            self.config.gemini_bin,
+            "--approval-mode",
+            approval_mode,
+            "-m",
+            model,
+        ]
+        if output_format:
+            command.extend(["--output-format", output_format])
+        command.extend(["-p", prompt])
+        result = subprocess.run(
+            command,
+            cwd=self.config.vault_root,
+            env=self.config.runtime_env(),
+            input=context,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return CommandResult(result.returncode, result.stdout, result.stderr)
+
+    def run_prompt(self, prompt: str, model: str, approval_mode: str) -> CommandResult:
+        """Run a bare prompt with no recipe, no vault context, and no GEMINI.md."""
+        command = [
+            self.config.gemini_bin,
+            "--approval-mode",
+            approval_mode,
+            "-m",
+            model,
+            "--output-format",
+            "json",
+            "-p",
+            prompt,
+        ]
+        result = subprocess.run(
+            command,
+            cwd="/tmp",  # outside vault so GEMINI.md does not auto-load
+            env=self.config.runtime_env(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return CommandResult(result.returncode, result.stdout, result.stderr)
+
 
 class BlueBubblesClient:
     def __init__(self, config: Config):

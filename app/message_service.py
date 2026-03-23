@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, Tuple
 
 from .actions import ActionDispatcher
+from .automations import AutomationService
 from .config import Config
 from .context import ContextBuilder
 from .gateways import BlueBubblesClient
@@ -28,12 +29,14 @@ class MessageService:
         recipes: RecipeRunner,
         actions: ActionDispatcher,
         messenger: BlueBubblesClient,
+        automations: AutomationService | None = None,
     ):
         self.config = config
         self.contexts = contexts
         self.recipes = recipes
         self.actions = actions
         self.messenger = messenger
+        self.automations = automations
 
     def handle_send(self, token: str, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
         if self.config.enforce_send_auth and self.config.send_api_token and token != self.config.send_api_token:
@@ -76,21 +79,14 @@ class MessageService:
             print(f"[{datetime.now()}] Ignored: unauthorized or self")
         return 200, {"status": "received"}
 
-    def sender_label(self, handle: str) -> str:
-        try:
-            position = self.config.valid_handles.index(handle) + 1
-        except ValueError:
-            return "authorized contact"
-        return f"authorized contact {position}"
-
     def process_and_reply(self, text: str, chat_guid: str, handle: str) -> None:
-        sender = self.sender_label(handle)
+        sender = "Parent A" if handle == self.config.valid_handles[0] else "Parent B"
         current_ts = current_timestamp()
         context = self.contexts.build_message_context(current_ts)
 
         if not GREETING_RE.match(text or ""):
             try:
-                self.messenger.send_message(chat_guid, "On it. Checking the records now.", context_label="ack")
+                self.messenger.send_message(chat_guid, f"On it, {sender}. Checking the household records now.", context_label="ack")
             except Exception as exc:
                 print(f"[{datetime.now()}] Ack failed: {exc}")
 
@@ -113,9 +109,15 @@ class MessageService:
             actions = payload.get("actions", [])
             if not isinstance(actions, list):
                 raise ValueError("actions must be a list")
-            if not any(action.get("action") == "session_log_append" for action in actions):
-                actions.append({"action": "session_log_append", "content": default_log_entry(sender, text, reply_text)})
-            self.actions.execute_message_actions(actions, text)
+            run_automations = [a for a in actions if a.get("action") == "run_automation"]
+            other_actions = [a for a in actions if a.get("action") != "run_automation"]
+            if not any(a.get("action") == "session_log_append" for a in other_actions):
+                other_actions.append({"action": "session_log_append", "content": default_log_entry(sender, text, reply_text)})
+            self.actions.execute_message_actions(other_actions, text)
+            for automation_action in run_automations:
+                name = str(automation_action.get("name", "")).strip()
+                if name and self.automations:
+                    self.automations.run(name)
             if not reply_text:
                 raise ValueError("reply_text was empty")
         except Exception as exc:
@@ -133,3 +135,4 @@ class MessageService:
             self.messenger.send_message(chat_guid, reply_text, context_label="final")
         except Exception as exc:
             print(f"[{datetime.now()}] Egress failed (final): {exc}")
+

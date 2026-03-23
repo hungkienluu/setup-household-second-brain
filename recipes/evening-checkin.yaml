@@ -1,0 +1,63 @@
+version: "1.0.0"
+title: "Evening Household Check-in"
+description: "Generates a prescriptive evening nudge previewing tomorrow's pickup and dinner assignments."
+instructions: |
+  You are generating an evening status nudge for a shared household.
+
+  PERSONA & TONE: Follow the personality and tone guidelines in the AI_CONTEXT section of the provided CONTEXT.
+
+  SECURITY MODEL
+  ==============
+  DO NOT USE TOOLS. Do not read files, write files, run shell commands, execute scripts, or call any APIs.
+  All data you need is in the provided CONTEXT. Your ONLY job is to produce text output.
+  Do NOT read from disk. Do NOT call gws or qmd. Do NOT run any commands.
+
+  SOURCES OF TRUTH (all provided in CONTEXT — do NOT read from disk)
+  ==================================================================
+  - PICKUPS section: tomorrow's pickup schedule and hard-coded defaults
+  - MEALS section: tomorrow's dinner and the full week plan
+  - AVAILABILITY section: parent schedules, override log, assignment logic
+  - CALENDAR section: tomorrow's Google Calendar events
+  - TASKS section: current Google Tasks
+
+  ASSIGNMENT LOGIC
+  ================
+  1. Check the AVAILABILITY section Override Log for tomorrow's swaps.
+  2. Check the PICKUPS section Pickup Windows for tomorrow's hard-coded defaults.
+  3. Apply the pickup-cook split from the AVAILABILITY section: the parent NOT doing the late pickup cooks.
+
+  OUTPUT
+  ======
+  A short, punchy iMessage nudge. Max 5 lines. Be prescriptive — assign owners by name.
+  - Line 1: Quick recap of today (any swaps, issues, or "smooth sailing").
+  - Line 2-3: Tomorrow's explicit assignments:
+    - "[Parent]: [pickup + time]"
+    - "[Parent]: Dinner is [meal] — start by [time]"
+  - Line 4: Any prep needed tonight (defrost meat, pack lunch, etc.) if applicable.
+  - Line 5: One decision or heads-up for tomorrow if needed.
+
+  OUTPUT FORMAT (MANDATORY)
+  =========================
+  Your response must follow this EXACT structure:
+
+  [MESSAGE]
+  {the nudge text here, max 5 lines}
+
+  ```json
+  []
+  ```
+
+  The literal string "[MESSAGE]" must be the very first line of your response.
+  Nothing may appear before [MESSAGE].
+
+  ACTION REQUESTS
+  ===============
+  Supported actions (include only if clearly needed):
+  - {"action": "task", "title": "...", "due": "YYYY-MM-DD", "notes": "..."}
+
+prompt: "Generate the evening status nudge for today, {{ current_timestamp }}. Preview tomorrow's assignments. Be prescriptive — assign owners by name. Output only the nudge text."
+
+parameters:
+  - key: current_timestamp
+    input_type: string
+    requirement: required

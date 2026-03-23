@@ -24,7 +24,7 @@ class FakeRecipes:
         if output_file is not None:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text("brief body")
-        return RecipeResult(content="brief body", actions=[{"action": "task", "title": "Owner A: test"}], raw_output="raw")
+        return RecipeResult(content="brief body", actions=[{"action": "task", "title": "Parent A: test"}], raw_output="raw")
 
 
 class FakeActions:
@@ -53,7 +53,7 @@ class AutomationServiceTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def test_daily_brief_runs_recipe_dispatches_actions_and_sends_brief(self):
+    def test_daily_brief_runs_recipe_and_sends_brief(self):
         contexts = FakeContexts()
         recipes = FakeRecipes()
         actions = FakeActions()
@@ -63,7 +63,7 @@ class AutomationServiceTests(unittest.TestCase):
         service.daily_brief()
 
         self.assertEqual("daily-brief.yaml", recipes.calls[0][0])
-        self.assertEqual({"task", "file_append"}, actions.calls[0][1])
+        self.assertEqual([], actions.calls)
         self.assertTrue(briefs.sent)
 
 
